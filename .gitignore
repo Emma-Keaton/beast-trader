@@ -1,0 +1,34 @@
+node_modules/
+dist/
+out/
+.next/
+data/store.json
+.env
+.env.local
+*.log
+*.err
+.DS_Store
+
+# Local runtime state — user data, never shared.
+backend/data/store.json
+backend/data/history/
+
+# The backend writes its own PID here so it can restart itself without the
+# `taskkill /im node.exe` that once took down every unrelated Node process on the
+# machine. It is meaningless on another machine and must not be shared.
+backend/data/backend.pid
+*.pid
+
+# This file exists to hold Supabase credentials and encrypted keys — see its own
+# comment. It is a comment today, but the whole point of it is to be filled in, so
+# it is ignored now rather than after someone commits a live key.
+backend/config/credentials.yaml
+
+# Trained models and cached price history ARE shared: the backend loads the
+# model from backend/data/models/ on boot, and a deploy without it silently
+# falls back to the weaker rules tier with no error to explain why.
+!backend/data/
+!backend/data/models/
+!backend/data/models/*.json
+backend/data/history/
+

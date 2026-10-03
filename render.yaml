@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: beast-trader-backend
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: JWT_SECRET
+        generateValue: true
+      - key: POLL_INTERVAL_MS
+        value: "30000"
+      - key: TRADING_MODE
+        value: paper
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      # Optional. Absent => keyless CoinMarketCap site feed. Present but
+      # invalid => warning logged, keyless feed used instead.
+      - key: CMC_API_KEY
+        sync: false

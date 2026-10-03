@@ -1,0 +1,21 @@
+{
+  "name": "beast-trader",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Device-scoped, AI-assisted crypto trading terminal (CEX + DEX/Solana) with auto-polled watchlist, research, prediction and paper/live execution.",
+  "scripts": {
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "build": "npm --prefix backend install && npm --prefix frontend install && npm --prefix frontend run build",
+    "start:backend": "npm --prefix backend start",
+    "lint": "oxlint frontend/src backend/src",
+    "test": "npm --prefix backend test"
+  },
+  "devDependencies": {
+    "oxlint": "^0.16.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
+

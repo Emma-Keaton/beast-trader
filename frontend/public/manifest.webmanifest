@@ -1,0 +1,15 @@
+{
+  "name": "Beast-Trader",
+  "short_name": "Beast",
+  "description": "Follow the coins you care about. Beast watches them for you.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#050D1F",
+  "theme_color": "#050D1F",
+  "orientation": "any",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
