@@ -1030,6 +1030,46 @@ test("every route in the API contract is registered", () => {
     .map(([method, path]) => `${method.toUpperCase()} ${path}`);
   assert.deepEqual(missing, [], `missing routes: ${missing.join(", ")}`);
 });
+test("promise-returning data helpers are awaited before they reach res.json", () => {
+  /**
+   * A trap this codebase sets repeatedly: these helpers are declared with plain
+   * `function`, not `async function`, yet they return `cache.fetch(...)` — a
+   * promise. `res.json(somePromise)` does not throw and does not warn. It
+   * serialises the promise to `{}`, so the route answers 200 with an empty body.
+   *
+   * That is invisible from the outside. An empty trending board already looks like
+   * "the upstream returned nothing", which these routes are explicitly designed to
+   * tolerate — so nothing distinguishes a working route from a forgotten `await`.
+   *
+   * It was live: after being reconstructed, /markets/trending, /markets/movers,
+   * /markets/quote/cmc and /fx all returned `{}` and reported 200.
+   */
+  const src = readFileSync(new URL("../src/routes/index.js", import.meta.url), "utf8");
+  const promiseReturning = [
+    "trendingCrypto",
+    "allMovers",
+    "cmcQuotes",
+    "fxRates",
+    "searchTokens",
+    "bestPair",
+    "chainVolume",
+    "marketSnapshot",
+    "crossCheck",
+    "convert",
+  ];
+  const offenders = [];
+  for (const name of promiseReturning) {
+    for (const m of src.matchAll(new RegExp(`\\b${name}\\s*\\(`, "g"))) {
+      const before = src.slice(Math.max(0, m.index - 16), m.index);
+      if (!/await\s*$/.test(before)) {
+        offenders.push(`${name} (line ${src.slice(0, m.index).split("\n").length})`);
+      }
+    }
+  }
+  assert.deepEqual(offenders, [], `called without await: ${offenders.join(", ")}`);
+});
+
+
 
 test("reading a collection that has never been written returns empty, not an error", async () => {
   // `readLocal()[table]` is undefined for a table with no rows yet, and calling

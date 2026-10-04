@@ -152,12 +152,14 @@ const market = (fn) => ah(async (req, res) => {
    the dashboard showing an empty board is correct, and a 500 is not. ────────── */
 
 publicRouter.get("/markets/trending", market(async (_req, res) => {
-  res.json(trendingCrypto() ?? []);
+  // `trending()` is not declared async but returns `cache.fetch(...)`, a promise.
+  // Without the await, `res.json` receives a Promise and serialises it to `{}`.
+  res.json((await trendingCrypto()) ?? []);
 }));
 
 publicRouter.get("/markets/movers", market(async (req, res) => {
   const limit = Math.max(1, Math.min(50, Number(req.query.limit) || 12));
-  res.json(allMovers(limit) ?? []);
+  res.json((await allMovers(limit)) ?? []);
 }));
 
 publicRouter.get("/markets/search", market(async (req, res) => {
@@ -179,7 +181,7 @@ publicRouter.get("/markets/quote", market(async (req, res) => {
 publicRouter.get("/markets/quote/cmc", market(async (req, res) => {
   const symbol = String(req.query.symbol ?? "").trim();
   if (!symbol) return res.status(400).json({ error: "symbol is required" });
-  const quote = cmcQuotes(symbol);
+  const quote = await cmcQuotes(symbol);
   if (!quote) return res.status(404).json({ error: `no CMC quote for ${symbol}` });
   res.json(quote);
 }));
@@ -209,7 +211,7 @@ publicRouter.get("/markets/chains", market(async (_req, res) => {
 
 /** All available USD rates. Cached; `null` when the rate provider is down. */
 publicRouter.get("/fx", ah(async (_req, res) => {
-  res.json(fxRates() ?? null);
+  res.json((await fxRates()) ?? null);
 }));
 
 /** Convert a USD amount into a currency. Always returns a shape the UI can read. */
