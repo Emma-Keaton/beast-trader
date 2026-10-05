@@ -49,6 +49,15 @@ export const config = {
   // the default leaves 20% headroom. Raise it when you upgrade the plan.
   cmcMonthlyCreditBudget: Number(process.env.CMC_MONTHLY_CREDIT_BUDGET || 10_000),
   fxApiKey: process.env.FX_API_KEY || "",
+  /**
+   * Optional Helius key for the whale flow collector (`whalewatch.js`).
+   *
+   * Empty means the collector is off and the app is unchanged — flows are
+   * additive training material, never a dependency. When set, every call
+   * through it still spends the local rate/credit budgets first: the free
+   * plan's 1,000,000 monthly credits are a hard cliff, not a suggestion.
+   */
+  heliusApiKey: process.env.HELIUS_API_KEY || "",
   autoTradeMinConfidence: Number(process.env.AUTO_TRADE_MIN_CONFIDENCE || 0.65),
   maxOrderUsd: Number(process.env.MAX_ORDER_USD || 100),
   /**
@@ -63,6 +72,19 @@ export const config = {
    * quota; `quotaStatus()` shows it degrading before that becomes a problem.
    */
   dexWatchIntervalMs: Number(process.env.DEX_WATCH_INTERVAL_MS || 60_000),
+  /**
+   * How often the whale flow collector runs.
+   *
+   * Ten minutes because it is the most expensive collector per tick: three
+   * mints × (1 enhanced-transaction call at 10 credits + a price lookup)
+   * ≈ 30 credits and 6 requests. At this cadence a month costs ~130k of the
+   * 1M allowance — about 13%, leaving the rest of the app Helius headroom.
+   *
+   * Whale flows are discrete events measured in hours, not seconds; a
+   * faster tick finds the same transfers and just spends more credits
+   * re-reading them (they de-duplicate by signature anyway).
+   */
+  whaleWatchIntervalMs: Number(process.env.WHALE_WATCH_INTERVAL_MS || 10 * 60_000),
   /**
    * Which venue live orders go to when a plan does not name one.
    *

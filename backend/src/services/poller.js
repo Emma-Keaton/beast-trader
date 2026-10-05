@@ -9,6 +9,7 @@ import { forecastEnsemble } from "./predict.js";
 import { runAutoExecutor } from "./autoexec.js";
 import { runImprovementCycle } from "./improve.js";
 import { tick as dexTick } from "./dexwatch.js";
+import { tick as whaleTick } from "./whalewatch.js";
 
 /**
  * Watchlist auto-poller.
@@ -183,6 +184,34 @@ function startDexWatchLoop() {
   return timer;
 }
 
+/**
+ * The whale flow loop.
+ *
+ * Same reasoning as the DEX loop — shared, metered observation work that is
+ * not per-user — but a slower cadence (default 10 minutes) because each tick
+ * spends Helius credits and flows are measured in hours, not seconds.
+ *
+ * When `HELIUS_API_KEY` is unset the first run logs one "disabled" line and
+ * every later run returns immediately without touching the network, so this
+ * timer is a no-op in a keyless deployment rather than a source of errors.
+ */
+function startWhaleWatchLoop() {
+  const run = async () => {
+    try {
+      await whaleTick();
+    } catch (err) {
+      // Swallowed for the same reason every other loop here swallows: a
+      // collection failure must never stop pricing and predictions.
+      console.warn("[whalewatch] tick failed:", err.message);
+    }
+  };
+
+  const timer = setInterval(run, config.whaleWatchIntervalMs);
+  timer.unref?.();
+  run(); // immediate first collection window
+  return timer;
+}
+
 export function startPoller() {
   const timer = setInterval(async () => {
     try {
@@ -196,5 +225,6 @@ export function startPoller() {
   startImprovementLoop();
   startAutoExecLoop();
   startDexWatchLoop();
+  startWhaleWatchLoop();
   return timer;
 }
