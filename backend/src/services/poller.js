@@ -8,6 +8,7 @@ import { recordSignal } from "../ml/scoreboard.js";
 import { forecastEnsemble } from "./predict.js";
 import { runAutoExecutor } from "./autoexec.js";
 import { runImprovementCycle } from "./improve.js";
+import { tick as dexTick } from "./dexwatch.js";
 
 /**
  * Watchlist auto-poller.
@@ -153,6 +154,35 @@ function startAutoExecLoop() {
   return timer;
 }
 
+/**
+ * The DEX observation loop.
+ *
+ * On its own timer, separate from the 30-second market poller, because this is
+ * not a per-user task: the snapshots are facts about pools, shared by everyone,
+ * and the cost is metered. It collects Solana only for now — see dexwatch.tick.
+ *
+ * Runs once immediately as well as on the interval, because a collector that
+ * waits a full period before its first observation means the first `liquidity_trend`
+ * window does not exist for that long. On a Render spin-down the process is
+ * usually short-lived, so an immediate first tick is often the ONLY tick.
+ */
+function startDexWatchLoop() {
+  const run = async () => {
+    try {
+      await dexTick();
+    } catch (err) {
+      // Swallowed for the same reason every other loop here swallows: a
+      // data-collection failure must never stop pricing and predictions.
+      console.warn("[dexwatch] tick failed:", err.message);
+    }
+  };
+
+  const timer = setInterval(run, config.dexWatchIntervalMs);
+  timer.unref?.();
+  run(); // immediate first observation
+  return timer;
+}
+
 export function startPoller() {
   const timer = setInterval(async () => {
     try {
@@ -165,5 +195,6 @@ export function startPoller() {
   timer.unref?.();
   startImprovementLoop();
   startAutoExecLoop();
+  startDexWatchLoop();
   return timer;
 }

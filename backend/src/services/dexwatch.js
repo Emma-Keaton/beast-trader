@@ -308,6 +308,48 @@ export async function collectOnce({
   return { fetched: all.length, stored, budget_denied: budgetDenied, rows };
 }
 
+/**
+ * Persistence adapter: store parsed snapshots into Supabase (or the local JSON
+ * store when no database is configured).
+ *
+ * Returns the number ACTUALLY stored. A collector that fetched 30 rows and
+ * stored none must report 0, not 30 — otherwise the health check reads healthy
+ * while the feature stays permanently untrained.
+ */
+export async function persistSnapshots(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return 0;
+  const { insertRows } = await import("../store.js");
+  return insertRows("dex_snapshots", rows);
+}
+
+/**
+ * One collection tick, wired to persistence.
+ *
+ * `chains` defaults to Solana only, deliberately. Collecting seven chains every
+ * 30 seconds would spend most of the DexScreener budget on pools that will never
+ * be traded, and the feature is being built for Solana first. Widen it once there
+ * is evidence Solana is working.
+ */
+export async function tick({ chains = ["solana"], limit = 30, now } = {}) {
+  const result = await collectOnce({
+    chains,
+    limit,
+    persist: persistSnapshots,
+    now,
+  });
+
+  // A tick that fetched nothing and stored nothing is the normal state when the
+  // quota is spent, so it logs at one level; a tick that FETCHED rows and then
+  // failed to STORE them is a real fault and logs loudly. Those two states look
+  // identical in a quiet log otherwise, and only one of them is a bug.
+  if (result.fetched > 0 && result.stored === 0) {
+    console.warn(`[dexwatch] fetched ${result.fetched} but stored none — check the dex_snapshots table exists`);
+  } else if (result.stored > 0) {
+    console.log(`[dexwatch] stored ${result.stored} snapshots`);
+  }
+  return result;
+}
+
 /* ── helpers ──────────────────────────────────────────────────────────────── */
 
 function numOrNull(v) {

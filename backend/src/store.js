@@ -13,7 +13,24 @@ import { config, usingSupabase } from "./config.js";
  */
 
 const FILE = path.join(config.dataDir, "store.json");
-const COLS = ["watchlist", "orders", "research_logs", "device_settings", "paper_calls"];
+/**
+ * Tables the local JSON store knows about.
+ *
+ * The DEX observation tables are here because the collector must run with no
+ * database configured — that is how the app runs on a fresh machine, and a
+ * collector that silently no-ops off-Supabase would leave the feature permanently
+ * untrained while appearing healthy.
+ */
+const COLS = [
+  "watchlist",
+  "orders",
+  "research_logs",
+  "device_settings",
+  "paper_calls",
+  "dex_snapshots",
+  "whale_flows",
+  "whale_profiles",
+];
 
 function blank() {
   const o = {};
@@ -98,6 +115,60 @@ export async function insertRow(table, row) {
   db[table].push(record);
   writeLocal();
   return record;
+}
+
+/**
+ * Insert many rows in one request.
+ *
+ * The DEX collector produces tens of rows per tick. Issuing one POST per row
+ * would spend the whole tick in HTTP round trips and, on the local JSON path,
+ * would rewrite the entire store file once per row — turning a 30-second poll
+ * into 30 rewrites of a growing file.
+ *
+ * Supabase's PostgREST accepts an array body for a bulk insert. The local store
+ * appends them in one write for the same reason.
+ *
+ * Returns the number stored, never a partial truth: on failure it returns 0 and
+ * logs, because a collector that reports "stored 30" when it stored 0 is worse
+ * than one that reports nothing. `dexwatch.collectOnce` surfaces that count and
+ * a zero must be visible.
+ */
+export async function insertRows(table, rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return 0;
+
+  if (usingSupabase) {
+    try {
+      const res = await fetch(`${config.supabaseUrl}/rest/v1/${table}`, {
+        method: "POST",
+        headers: {
+          apikey: config.supabaseKey,
+          Authorization: `Bearer ${config.supabaseKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(rows),
+      });
+      if (!res.ok) throw new Error(`supabase insert ${table}: ${res.status}`);
+      return rows.length;
+    } catch (err) {
+      console.warn(`[store] bulk insert into ${table} failed:`, err.message);
+      return 0;
+    }
+  }
+
+  try {
+    const db = readLocal();
+    // `db[table]` can be undefined for a table added after this store was
+    // first written. Initialising it here rather than trusting blank() avoids a
+    // TypeError that would take down the collector on a fresh data directory.
+    if (!Array.isArray(db[table])) db[table] = [];
+    const stamped = rows.map((r) => ({ id: crypto.randomUUID(), created_at: new Date().toISOString(), ...r }));
+    db[table].push(...stamped);
+    writeLocal();
+    return stamped.length;
+  } catch (err) {
+    console.warn(`[store] bulk insert into ${table} failed:`, err.message);
+    return 0;
+  }
 }
 
 /**

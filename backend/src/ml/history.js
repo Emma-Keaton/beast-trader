@@ -56,12 +56,21 @@ async function getJSON(url, timeoutMs = 20_000, headers = {}) {
 
 /**
  * Daily bars for a coin. Tries Binance, then CoinGecko.
- * @returns `{ id, symbol, bars: [{t,o,h,l,c,v}], source }`
+ *
+ * @param opts.offline  never touch the network. A cached file is served at ANY
+ *   age (the TTL below is a freshness rule for live scoring, not a rule about
+ *   what training may read), and a missing cache is an error rather than a
+ *   reason to fetch. Without this, `train --offline` silently went to the
+ *   network whenever the cache was older than 12h — which on a machine that
+ *   trains weekly was always.
+ * @returns `{ id, symbol, bars: [{t,o,h,l,c,v}], source, cached? }`
  */
-export async function fetchDailyBars(id, symbol = id, days = 5000) {
+export async function fetchDailyBars(id, symbol = id, days = 5000, opts = {}) {
+  const { offline = false } = opts;
   const file = path.join(CACHE_DIR, `${id}.json`);
-  const cached = readCache(file);
+  const cached = readCache(file, { maxAgeMs: offline ? Infinity : CACHE_TTL });
   if (cached) return { ...cached, cached: true };
+  if (offline) throw new Error(`${id}: no cached history (offline mode)`);
 
   let bars = [];
   let source = "";
@@ -134,10 +143,12 @@ export async function fetchBinance(pair, days = 5000) {
     .slice(-target);
 }
 
-function readCache(file) {
+function readCache(file, { maxAgeMs = CACHE_TTL } = {}) {
   try {
-    const stat = fs.statSync(file);
-    if (Date.now() - stat.mtimeMs > CACHE_TTL) return null;
+    if (maxAgeMs !== Infinity) {
+      const stat = fs.statSync(file);
+      if (Date.now() - stat.mtimeMs > maxAgeMs) return null;
+    }
     return JSON.parse(fs.readFileSync(file, "utf8"));
   } catch {
     return null;

@@ -52,7 +52,7 @@ async function main() {
   for (const coin of TRAINING_UNIVERSE) {
     let data;
     try {
-      data = await fetchDailyBars(coin.id, coin.symbol);
+      data = await fetchDailyBars(coin.id, coin.symbol, 5000, { offline: OFFLINE });
     } catch (e) {
       console.warn(`[train] ${coin.symbol}: skipped (${e.message})`);
       continue;

@@ -52,6 +52,18 @@ export const config = {
   autoTradeMinConfidence: Number(process.env.AUTO_TRADE_MIN_CONFIDENCE || 0.65),
   maxOrderUsd: Number(process.env.MAX_ORDER_USD || 100),
   /**
+   * How often the DEX observation collector runs.
+   *
+   * The floor is the quota, not preference. Each Solana tick spends three
+   * DexScreener calls (one per pair query), so 60s costs 3/min against a 300/min
+   * limit — about 1% of budget. A 30s default would double that for data feeding
+   * a trend feature measured in hours, so 60s is the honest default.
+   *
+   * Raising it is the first thing to try if the collector ever starts eating
+   * quota; `quotaStatus()` shows it degrading before that becomes a problem.
+   */
+  dexWatchIntervalMs: Number(process.env.DEX_WATCH_INTERVAL_MS || 60_000),
+  /**
    * Which venue live orders go to when a plan does not name one.
    *
    * `exchange.js` supports several (`SUPPORTED_EXCHANGES`); this picks the
