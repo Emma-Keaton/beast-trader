@@ -13,6 +13,17 @@ data/store.json
 backend/data/store.json
 backend/data/history/
 
+# Challenger and strategy state. It is rewritten by every promotion evaluation
+# and by the test suite, so a leftover entry from an interrupted run makes
+# `retrain.test.js` fail on its next run ("expected 1 challenger"). Runtime
+# state, same class as store.json.
+backend/data/strategies/
+
+# Isolated data root for the test suite (see DATA_DIR in .env.test). Keeps tests
+# from writing into backend/data/ and corrupting a real paper track record.
+backend/.test-data/
+backend/.test-data-registry/
+
 # The backend writes its own PID here so it can restart itself without the
 # `taskkill /im node.exe` that once took down every unrelated Node process on the
 # machine. It is meaningless on another machine and must not be shared.

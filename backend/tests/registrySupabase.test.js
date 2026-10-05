@@ -11,7 +11,14 @@
  * `usingSupabase` is computed once when config.js loads, so the env vars must be
  * set before anything imports it. Node's test runner gives each file its own
  * process, so setting them at the top of this file is safe.
+ *
+ * DATA_DIR is overridden here because this file and retrain.test.js both use the
+ * `strategies` directory. Node runs test FILES in parallel processes, so with a
+ * shared root, retrain's beforeEach reset deletes this file's challengers.json
+ * mid-test and it fails with "ENOENT: no such file or directory". Each test file
+ * that touches the strategies directory needs its own root.
  */
+process.env.DATA_DIR = ".test-data-registry";
 process.env.SUPABASE_URL = "https://stub.supabase.co";
 process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key";
 

@@ -68,7 +68,22 @@ export const config = {
    * a permitted trade executes, it does not decide whether it may exist.
    */
   network: process.env.NETWORK === "testnet" ? "testnet" : "mainnet",
-  dataDir: path.join(__dirname, "..", "data"),
+  /**
+   * Where local JSON state lives: store.json, the model, scoreboard, strategies
+   * and cached history.
+   *
+   * Overridable so the test suite can point somewhere disposable. Without this,
+   * tests wrote into the same `backend/data/` a running server uses — so a test
+   * run could corrupt a real paper track record, and a leftover entry from an
+   * interrupted run (a half-written challengers.json) failed the *next* run with
+   * a misleading assertion error. `.env.test` sets DATA_DIR to `.test-data`.
+   *
+   * A relative DATA_DIR resolves against the backend root, not the process cwd,
+   * so `npm test` and `node --test tests/x.js` land in the same place.
+   */
+  dataDir: process.env.DATA_DIR
+    ? path.resolve(path.join(__dirname, ".."), process.env.DATA_DIR)
+    : path.join(__dirname, "..", "data"),
 };
 
 export const usingSupabase = Boolean(config.supabaseUrl && config.supabaseKey);

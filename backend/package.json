@@ -7,7 +7,9 @@
     "scripts":  {
                     "dev":  "node --watch src/index.js",
                     "start":  "node src/index.js",
-                    "test":  "node --test --env-file-if-exists=.env.test",
+                    "test":    "node --test --env-file-if-exists=.env.test --import=./scripts/test-env.js",
+        "pretest":  "node --env-file-if-exists=.env.test scripts/reset-test-data.js",
+        "check":  "npm run lint && npm test",
                     "train":  "node scripts/train.js",
                     "lint":  "oxlint src scripts",
                     "collect":  "node scripts/intraday-collect.js",

@@ -106,7 +106,12 @@ test("limit price is used when a fill price is missing", () => {
 
 const DIR = path.join(config.dataDir, "strategies");
 function reset() {
-  fs.rmSync(DIR, { recursive: true, force: true });
+  // Windows raises ENOTEMPTY when a directory is removed while a handle is
+  // still closing, which surfaced as "ENOTEMPTY, Directory not empty:
+  // .test-data\strategies" and failed a test that had nothing wrong with it.
+  // A retry is the documented remedy; force is already set, and maxRetries only
+  // applies to the recursive path.
+  fs.rmSync(DIR, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   resetRetrainClock();
 }
 
@@ -177,7 +182,6 @@ test("enough settled calls produces a challenger, not an installed model", async
   // Critically: proposing a challenger must not make it the champion.
   assert.equal(getChampion(), null);
 });
-test.after(reset);
 test("a challenger below the minimum call count is not eligible", async () => {
   await proposeChallenger({ scaler: { mean: [0], std: [1] }, weights: [1], bias: 0 });
   for (let i = 0; i < PROMOTION_RULES.minSettledCalls - 1; i++) {

@@ -50,7 +50,26 @@ export function rollingStd(arr, end, n) {
   return Math.sqrt(s / n);
 }
 
-/** Wilder-style RSI over `n` bars, returned on a 0..1 scale. */
+/**
+ * RSI over `n` bars, returned on a 0..1 scale.
+ *
+ * SIMPLE AVERAGE, not Wilder's smoothing — despite what this function used to
+ * be commented as. Measured against a textbook Wilder RSI on the committed
+ * history (see scripts/rsi-compare.js), the two differ by up to 13 percentage
+ * points on a 0..1 scale: Bitcoin at one horizon gave 0.3735 here versus 0.5048
+ * Wilder. A simple average only ever looks at the last `n` bars, so it reacts
+ * instantly and forgets; Wilder seeds once and then smooths with alpha = 1/n
+ * across the whole series, so it lags and remembers.
+ *
+ * The behaviour is left unchanged on purpose. The trained direction-v2.json was
+ * fitted against this exact definition, and silently swapping the convention
+ * would feed the model inputs shifted by up to 0.13 with no error, no NaN and
+ * no failing test — it would just return confident, wrong probabilities.
+ *
+ * So: do NOT "fix" this to Wilder without retraining. If you change it, change
+ * it deliberately, bump the model, and retrain. Any new indicator must arrive as
+ * a NEW feature column rather than a reinterpretation of an existing one.
+ */
 export function rsi(closes, end, n = 14) {
   if (end < n) return null;
   let gain = 0;
