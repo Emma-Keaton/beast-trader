@@ -288,4 +288,101 @@ alter table model_registry  enable row level security;
 --
 -- Then confirm the backend still works: restart it, check GET /api/health reports
 -- storage: supabase, and check /api/watchlist returns 200. If either fails, the
+-- ── DEX observation store ────────────────────────────────────────────────────
+-- Point-in-time DEX snapshots, collected from DexScreener and Helius and joined
+-- to price bars BY TIMESTAMP when features are built.
+--
+-- Two things make this table work rather than poison the model:
+--
+-- 1. `raw` keeps the full provider payload. If a feature turns out to be
+--    mis-derived, the original numbers are still there to rebuild it from.
+--    Dropping the raw payload makes a past data-quality bug unrecoverable.
+--
+-- 2. Deliberately NOT device-scoped. Same reasoning as paper_calls: these are
+--    facts about a market, not facts about a user, and every device should be
+--    able to train on them.
+--
+-- The (symbol, ts) index is the important part: features are built by asking
+-- "what was true at bar t", so every feature query is a point-in-time lookup.
+
+create table if not exists dex_snapshots (
+  id uuid primary key default gen_random_uuid(),
+  symbol text not null,
+  chain text not null,
+  ts timestamptz not null,          -- when this observation was taken
+  liquidity_usd numeric,
+  volume_usd numeric,               -- volume in the provider's own window
+  price_change_5m numeric,
+  price_change_1h numeric,
+  price_change_24h numeric,
+  buys integer,                     -- buy txns in the window
+  sells integer,
+  price_usd numeric,
+  raw jsonb,                        -- full provider payload, kept for rebuilds
+  created_at timestamptz default now()
+);
+
+-- The feature-lookup shape: newest snapshot at or before a given time.
+create index if not exists dex_snapshots_symbol_ts on dex_snapshots (symbol, ts desc);
+create index if not exists dex_snapshots_chain_ts  on dex_snapshots (chain, ts desc);
+
+-- Added after the base create: without these, a DEX feature cannot be derived
+-- from a historical snapshot without re-fetching, and `liquidity_trend` needs a
+-- reference point that is older than the current observation.
+alter table dex_snapshots add column if not exists pair_address text;
+alter table dex_snapshots add column if not exists dex_id text;
+alter table dex_snapshots add column if not exists quote_volume_usd numeric;
+alter table dex_snapshots add column if not exists source text;   -- dexscreener | helius
+
+-- Whale / wallet flow. Separate from dex_snapshots because the shape and the
+-- cost are different: a wallet event is a discrete transfer of significance,
+-- whereas a snapshot is a periodic reading of a pool.
+--
+-- `wallet` is NOT a user of this app. It is a market participant being observed,
+-- exactly as a pool is. No key material, no signing, no wallet handling of any
+-- kind is implied or stored here.
+create table if not exists whale_flows (
+  id uuid primary key default gen_random_uuid(),
+  wallet text not null,
+  symbol text,
+  chain text not null,
+  ts timestamptz not null,
+  side text,                        -- buy | sell | unknown
+  amount_usd numeric,
+  token_amount numeric,
+  tx_signature text,
+  raw jsonb,
+  created_at timestamptz default now()
+);
+
+create index if not exists whale_flows_wallet_ts on whale_flows (wallet, ts desc);
+create index if not exists whale_flows_symbol_ts on whale_flows (symbol, ts desc);
+
+-- Per-wallet rollup so a feature can ask "is this wallet net-buying?" without
+-- scanning the raw flow table every time. Rebuilt incrementally by the collector.
+create table if not exists whale_profiles (
+  wallet text primary key,
+  chain text not null,
+  first_seen timestamptz,
+  last_seen timestamptz,
+  trades integer default 0,
+  net_usd numeric default 0,        -- signed: net selling is negative
+  tokens_seen integer default 0,
+  updated_at timestamptz default now()
+);
+
+-- RLS. These are read by the backend's service role like every other table.
+-- Enabled and deliberately not forced — see the note above.
+alter table dex_snapshots enable row level security;
+alter table whale_flows   enable row level security;
+alter table whale_profiles enable row level security;
+
+-- Add the new tables to the verification query at the top of this section.
+--   select c.relname, c.relrowsecurity as rls,
+--          (select count(*) from pg_policies where tablename = c.relname) as policies
+--     from pg_class c
+--    where c.relname in ('watchlist','orders','research_logs','device_settings',
+--                        'paper_calls','proposals','model_registry',
+--                        'dex_snapshots','whale_flows','whale_profiles')
+--    order by 1;
 -- backend is not using the service-role key.
