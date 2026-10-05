@@ -173,6 +173,7 @@ function ModelImprovement() {
           <ul className="space-y-2">
             {report.challengers.map((c) => (
               <li
+                key={c.id}
                 className="flex items-center justify-between gap-3 rounded-control border border-slate-200 px-3 py-2 dark:border-slate-700"
               >
                 <div className="min-w-0">

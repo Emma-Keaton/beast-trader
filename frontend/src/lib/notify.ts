@@ -93,7 +93,9 @@ export function notifyNewProposals(
   for (const p of fresh) {
     if (state === "granted") {
       try {
-        new Notification(title, {
+        // `void` marks the constructor call as deliberate: raising the
+        // notification IS the side effect, so there is no handle to keep.
+        void new Notification(title, {
           // No amount, no price. Those belong in the app behind a deliberate click.
           body: `${p.side} ${p.symbol} — open the app to review before it expires.`,
           // Same tag collapses repeats rather than stacking them.
