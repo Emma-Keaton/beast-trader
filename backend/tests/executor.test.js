@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { planOrder } from "../src/services/executor.js";
-import { settleOrders } from "../src/services/executor.js";
+import { planOrder, settleOrders } from "../src/services/executor.js";
 
 const snap = { symbol: "SOL", chain: "solana", price_usd: 200, source: "dexscreener" };
 const pred = { signal: "LONG", confidence: 0.8, target_price: 210, rationale: "test" };

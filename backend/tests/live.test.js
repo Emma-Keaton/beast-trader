@@ -4,7 +4,6 @@ import { CircuitBreaker, setBreaker, STATE } from "../src/ml/circuit.js";
 import { normaliseSymbol } from "../src/services/exchange.js";
 import { checkPrerequisites, describeFailures, setTradingMode } from "../src/services/gate.js";
 import { forecast, toPrediction } from "../src/ml/forecast.js";
-import { resetBoard, recordSignal, settleCalls, board } from "../src/ml/scoreboard.js";
 import { synthBars } from "../src/ml/synth.js";
 
 /* ── Symbol normalisation ─────────────────────────────────────────────────── */

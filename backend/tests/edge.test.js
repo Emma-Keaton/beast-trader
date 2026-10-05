@@ -1287,6 +1287,8 @@ test("alignment discards bars a pair does not share", async () => {
   assert.ok(series.length > 0);
   // Prices from a single alignment window, not a concatenation of disjoint ones.
   const sorted = [...series].sort((a, b) => a - b);
-  assert.deepEqual(series.length > 0 ? true : true, true);
+  // The alignment must yield usable numbers: a timestamp that matched no bar
+  // would surface as NaN here rather than as a silent hole in the series.
+  assert.ok(series.every((v) => Number.isFinite(v)));
   assert.ok(sorted.length === series.length);
 });

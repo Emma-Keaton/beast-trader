@@ -11,7 +11,7 @@
         "pretest":  "node --env-file-if-exists=.env.test scripts/reset-test-data.js",
         "check":  "npm run lint && npm test",
                     "train":  "node scripts/train.js",
-                    "lint":  "oxlint src scripts",
+                    "lint":  "oxlint src scripts tests",
                     "collect":  "node scripts/intraday-collect.js",
                     "test:local":  "node --test"
                 },
