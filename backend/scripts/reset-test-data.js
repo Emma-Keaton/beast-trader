@@ -70,9 +70,15 @@ if (path.resolve(dataDir) === path.resolve(path.join(backendRoot, "data"))) {
 fs.rmSync(dataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
 fs.mkdirSync(path.join(dataDir, "models"), { recursive: true });
 
-const committed = path.join(backendRoot, "data", "models", "direction-v2.json");
-if (fs.existsSync(committed)) {
-  fs.copyFileSync(committed, path.join(dataDir, "models", "direction-v2.json"));
+// Seed whichever trained model is committed, preferring the newest layout —
+// the same order registry.js resolves candidates in, so what the tests load is
+// what a deployment would load.
+const committedModelsDir = path.join(backendRoot, "data", "models");
+const committed = ["direction-v3.json", "direction-v2.json"]
+  .map((f) => path.join(committedModelsDir, f))
+  .find((f) => fs.existsSync(f));
+if (committed) {
+  fs.copyFileSync(committed, path.join(dataDir, "models", path.basename(committed)));
   console.log("[test-setup] seeded trained model into", path.relative(backendRoot, dataDir));
 } else {
   console.log("[test-setup] no trained model to seed; model-tier tests will skip");

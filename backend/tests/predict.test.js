@@ -95,6 +95,25 @@ test("a model learns a clearly separable pattern", () => {
   assert.ok(predictProbability(model, X[190]) > 0.9, "should be confident up on positive input");
   assert.ok(predictProbability(model, X[10]) < 0.1, "should be confident down on negative input");
 });
+test("fit refuses feature names that do not match the trained width", () => {
+  // A model that advertises names it does not have is the bug that broke the
+  // 18-feature cross-sectional model: consumers sized their rows from
+  // model.features.length and read past the end of the vector. The mismatch
+  // must throw, not quietly swap in a different list.
+  const { X, y } = buildDataset(synthBars(200, { seed: 7 }), { horizon: 3 });
+  assert.throws(
+    () => fit(X, y, { epochs: 10, featureNames: ["only", "two"] }),
+    /got 2 names for a 12-feature model/,
+    "mismatched names should be rejected loudly",
+  );
+  // And names that DO line up are stored verbatim.
+  const names = FEATURE_NAMES.map((n) => `renamed_${n}`);
+  assert.deepEqual(fit(X, y, { epochs: 10, featureNames: names }).features, names);
+  // With no names claimed, the canonical base list is attached at base width.
+  assert.deepEqual(fit(X, y, { epochs: 10 }).features, FEATURE_NAMES);
+});
+
+
 
 test("predicted probability is always a valid probability", () => {
   const { X, y } = buildDataset(synthBars(400, { seed: 9 }), { horizon: 3 });

@@ -145,8 +145,17 @@ export async function retrain(calls, opts = {}) {
     return { ran: false, reason: "not enough held-out calls to judge a retrain", rows: ordered.rows };
   }
 
-  const names = getChampion()?.features ?? listChallengers()[0]?.features ?? null;
-  const model = fit(Xtr, ytr, { epochs: 300, featureNames: names });
+  // Feature names are metadata about *these* columns. Names inherited from a
+  // model trained on a different feature set would label this one's columns
+  // wrongly — and `fit` now refuses to store mismatched names outright — so
+  // take them only when the width agrees, otherwise claim none and let `fit`
+  // attach the canonical names for this width (or honest positional labels
+  // for an unlabeled layout). The improvement cycle must keep running when
+  // the feature layout evolves between models.
+  const width = Xtr[0]?.length ?? 0;
+  const inherited = getChampion()?.features ?? listChallengers()[0]?.features ?? null;
+  const featureNames = Array.isArray(inherited) && inherited.length === width ? inherited : null;
+  const model = fit(Xtr, ytr, { epochs: 300, featureNames });
 
   // Score the new weights on data they were never fitted to. Unlike
   // `evaluateRows`, this does *not* refit anything — the weights are already

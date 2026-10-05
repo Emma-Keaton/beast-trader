@@ -6,7 +6,14 @@
  *
  * Flow: fetch daily bars per coin -> backtest per coin (out-of-sample) ->
  * pool the honest out-of-sample rows -> fit the final model on all of it ->
- * write `backend/data/models/direction-v2.json` + a human-readable report.
+ * write `backend/data/models/direction-v3.json` + a human-readable report.
+ *
+ * v3 is the DEX-aware layout: when `dex_snapshots` covers enough of the pooled
+ * rows, `liquidity_trend` and `buy_sell_imbalance` are appended (20 features);
+ * otherwise the coverage floor strips them and an 18-feature model is written,
+ * identical in layout to v2. The walk-forward evaluation is always built from
+ * the same inputs as the saved model, so the reported numbers describe the
+ * artefact on disk either way.
  *
  * The model that ships is only ever trained on data the backtest never
  * touched at the point it predicted, so the reported metrics describe
@@ -24,6 +31,8 @@ import { backtestUniverse } from "../src/ml/backtestXs.js";
 import { fit, predictProbability } from "../src/ml/logistic.js";
 import { FEATURE_NAMES } from "../src/ml/features.js";
 import { XS_FEATURE_NAMES } from "../src/ml/xsfeatures.js";
+import { DEX_FEATURE_NAMES, buildDexIndex } from "../src/ml/dexfeatures.js";
+import { listAllRows } from "../src/store.js";
 
 const OUT_DIR = path.join(config.dataDir, "models");
 const OFFLINE = process.argv.includes("--offline");
@@ -41,6 +50,39 @@ const HORIZON = 3;
  * reasoning that a third of predictions is a reasonable selectivity, not a
  * number harvested from the results.
  */
+
+/**
+ * Minimum fraction of pooled rows that must have an observed DEX state before
+ * the DEX columns are kept.
+ *
+ * 0.25, not 0: below roughly a quarter the columns are mostly neutral padding,
+ * and a scaler fitted to a 75%-constant column learns a mean and a std that
+ * describe the padding rather than the market. The floor turns "we collected
+ * three hours of snapshots" from a silent model-layout change into an explicit,
+ * logged decision — and `buildUniverseDataset` strips the columns identically
+ * for the training pool and the walk-forward evaluation, so the two can never
+ * disagree about the width.
+ */
+const MIN_DEX_COVERAGE = 0.25;
+
+/**
+ * Load stored `dex_snapshots` and index them by symbol.
+ *
+ * Every failure mode — no database, no table, no rows yet — means the same
+ * thing: train without DEX features. Collection is allowed to start *after*
+ * the first training run, so an absent history must not fail the trainer; the
+ * coverage floor and the log line make the resulting layout decision visible.
+ */
+async function loadDexIndex() {
+  try {
+    const rows = await listAllRows("dex_snapshots", "ts.asc", 20_000);
+    if (!rows.length) return { index: null, count: 0 };
+    return { index: buildDexIndex(rows), count: rows.length };
+  } catch (e) {
+    console.warn(`[train] dex_snapshots unavailable (${e.message}) - DEX features will be neutral/absent`);
+    return { index: null, count: 0 };
+  }
+}
 
 async function main() {
   console.log(`[train] mode=${OFFLINE ? "offline" : "online"} horizon=${HORIZON}d`);
@@ -105,22 +147,46 @@ async function main() {
   // rather than the market's own direction - see the note in `xsfeatures.js`
   // for the Liu/Tsyvinski/Wu result behind it.
   const universe = [...bySymbol.values()];
-  const pool = buildUniverseDataset(universe, { horizon: HORIZON });
+  const dex = await loadDexIndex();
+  const pool = buildUniverseDataset(universe, {
+    horizon: HORIZON,
+    dexIndex: dex.index,
+    minDexCoverage: MIN_DEX_COVERAGE,
+  });
   if (!pool.X.length) {
     console.error("[train] cross-sectional dataset is empty - nothing saved");
     process.exitCode = 1;
     return;
   }
-  const featureNames = [...FEATURE_NAMES, ...XS_FEATURE_NAMES];
+  const featureNames = [...FEATURE_NAMES, ...XS_FEATURE_NAMES, ...(pool.meta.dexIncluded ? DEX_FEATURE_NAMES : [])];
   console.log(
     `\n[train] cross-sectional set: ${pool.X.length} rows x ${featureNames.length} features ` +
       `from ${universe.length} coins (${pool.meta.skippedUndecidable} undecidable rows dropped)`,
   );
+  // The layout decision, stated where a human reading the training log cannot
+  // miss it: 20 features means the model can see DEX state; 18 means it cannot.
+  if (pool.meta.dexIncluded) {
+    console.log(
+      `[train] DEX features ON: ${dex.count} snapshots cover ${(pool.meta.dexCoverage * 100).toFixed(1)}% of rows`,
+    );
+  } else if (dex.index) {
+    console.warn(
+      `[train] DEX features OFF: only ${(pool.meta.dexCoverage * 100).toFixed(1)}% coverage ` +
+        `(< ${MIN_DEX_COVERAGE * 100}% floor) - training the 18-feature layout`,
+    );
+  } else {
+    console.log("[train] DEX features OFF: no dex_snapshots collected yet - 18-feature layout");
+  }
 
   // Honest out-of-sample evaluation of the model that will actually ship. The
   // per-coin backtest is built from different features and labels, so quoting
   // it here would describe a system that is not the one running in production.
-  const xs = backtestUniverse(universe, { horizon: HORIZON, minConfidence: TRADE_THRESHOLD });
+  const xs = backtestUniverse(universe, {
+    horizon: HORIZON,
+    minConfidence: TRADE_THRESHOLD,
+    dexIndex: dex.index,
+    minDexCoverage: MIN_DEX_COVERAGE,
+  });
   if (!xs.ok) {
     console.error(`[train] cross-sectional evaluation failed: ${xs.reason} - nothing saved`);
     process.exitCode = 1;
@@ -158,7 +224,7 @@ async function main() {
   }
 
   fs.mkdirSync(OUT_DIR, { recursive: true });
-  const file = path.join(OUT_DIR, "direction-v2.json");
+  const file = path.join(OUT_DIR, "direction-v3.json");
   fs.writeFileSync(file, JSON.stringify(trained, null, 2));
 
   console.log("\n[train] -- out-of-sample results ----------------------------");

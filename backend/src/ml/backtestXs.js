@@ -41,6 +41,10 @@ const DEFAULTS = {
   minConfidence: 0.2,
   folds: 4,
   epochs: 400,
+  // DEX feature policy. Must match `train.js` exactly: the walk-forward
+  // evaluation only describes the shipped model if both build the same width.
+  dexIndex: null,
+  minDexCoverage: 0.25,
 };
 
 /**
@@ -56,7 +60,11 @@ const MIN_TRADES = 200;
 
 export function backtestUniverse(universe, opts = {}) {
   const cfg = { ...DEFAULTS, ...opts };
-  const { X, y, indices, meta } = buildUniverseDataset(universe, { horizon: cfg.horizon });
+  const { X, y, indices, meta } = buildUniverseDataset(universe, {
+    horizon: cfg.horizon,
+    dexIndex: cfg.dexIndex,
+    minDexCoverage: cfg.minDexCoverage,
+  });
   if (X.length < 200) return { ok: false, reason: `only ${X.length} cross-sectional rows`, samples: X.length };
 
   const n = X.length;

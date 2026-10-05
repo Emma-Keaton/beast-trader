@@ -12,24 +12,54 @@ import fs from "node:fs";
 import path from "node:path";
 import { config } from "../config.js";
 
-const MODEL_FILE = path.join(config.dataDir, "models", "direction-v2.json");
+/**
+ * Every model file this deployment will load, newest layout first.
+ *
+ * `direction-v3.json` carries the DEX columns (20 features) and
+ * `direction-v2.json` is the original cross-sectional model (18). The loader
+ * takes the first file that exists, so an environment that has only ever
+ * trained v2 keeps working, and a fresh `npm run train` promotes itself to v3
+ * on the next reload without a restart.
+ */
+const MODEL_FILES = ["direction-v3.json", "direction-v2.json"].map((f) => path.join(config.dataDir, "models", f));
+
+/**
+ * The file tests exist-check against: whichever trained model this data root
+ * actually has, preferring v3. Falls back to the v2 path when neither exists
+ * (so the name is still meaningful in messages).
+ */
+const MODEL_FILE = MODEL_FILES.find((f) => fs.existsSync(f)) ?? MODEL_FILES[MODEL_FILES.length - 1];
 const RELOAD_MS = 5 * 60_000; // pick up a fresh training run without a restart
 
 let cache = null;
 let loadedAt = 0;
 
+/** Newest existing model file, re-resolved on every reload so a v3 written
+ * while the server is running is picked up without a restart. */
+function locateModel() {
+  for (const f of MODEL_FILES) {
+    try {
+      return { file: f, stat: fs.statSync(f) };
+    } catch {
+      /* try the next candidate */
+    }
+  }
+  return null;
+}
+
 export function getModel() {
   const fresh = Date.now() - loadedAt < RELOAD_MS;
   if (cache && fresh) return cache;
   try {
-    const stat = fs.statSync(MODEL_FILE);
-    if (cache && cache.__mtime === stat.mtimeMs) {
+    const found = locateModel();
+    if (!found) throw new Error("no model file");
+    if (cache && cache.__file === found.file && cache.__mtime === found.stat.mtimeMs) {
       loadedAt = Date.now();
       return cache;
     }
-    const parsed = JSON.parse(fs.readFileSync(MODEL_FILE, "utf8"));
+    const parsed = JSON.parse(fs.readFileSync(found.file, "utf8"));
     if (!parsed?.scaler || !Array.isArray(parsed.weights)) throw new Error("malformed model file");
-    cache = { ...parsed, __mtime: stat.mtimeMs };
+    cache = { ...parsed, __file: found.file, __mtime: found.stat.mtimeMs };
     loadedAt = Date.now();
     return cache;
   } catch {

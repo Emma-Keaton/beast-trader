@@ -10,6 +10,7 @@
 
 import { buildFeatures } from "./features.js";
 import { buildCrossSectional } from "./xsfeatures.js";
+import { DEX_FEATURE_NAMES, dexValuesFor } from "./dexfeatures.js";
 
 /**
  * Build supervised rows from OHLCV bars.
@@ -59,9 +60,16 @@ export function buildDataset(bars, opts = {}) {
  *
  * Rows are emitted in timestamp order, so the purged cross-validation splits
  * stay contiguous in time.
+ *
+ * When `dexIndex` is supplied (see `dexfeatures.js`), two DEX columns are
+ * appended per row and `meta.dexCoverage` reports the fraction of rows an
+ * observation actually described. Above `minDexCoverage` the columns survive;
+ * below it they are stripped again and `meta.dexIncluded` is false, so callers
+ * size their feature-name lists from `meta` rather than assuming. With no
+ * index the layout is exactly the 18 base+xs columns it always was.
  */
 export function buildUniverseDataset(universe, opts = {}) {
-  const { horizon = 3, noiseMult = 0.5, minCross = 5 } = opts;
+  const { horizon = 3, noiseMult = 0.5, minCross = 5, dexIndex = null, minDexCoverage = 0.25 } = opts;
   const { rows } = buildCrossSectional(universe, { minCross });
   if (!rows.length) return { X: [], y: [], indices: [], meta: { horizon, rows: 0, coins: universe.length } };
 
@@ -74,6 +82,7 @@ export function buildUniverseDataset(universe, opts = {}) {
   const fwd = [];
   const kept = [];
   let skippedUndecidable = 0;
+  let dexObserved = 0; // rows whose DEX state was actually observed
 
   for (const row of rows) {
     const bars = bySymbol.get(row.symbol);
@@ -93,7 +102,15 @@ export function buildUniverseDataset(universe, opts = {}) {
       continue; // the "right" answer here is genuinely undecidable
     }
 
-    X.push([...row.base, ...row.xs]);
+    // DEX columns are appended when an index was supplied; the coverage policy
+    // below decides whether they survive into the returned set.
+    if (dexIndex) {
+      const dex = dexValuesFor(dexIndex, row.symbol, row.ts);
+      X.push([...row.base, ...row.xs, ...dex.values]);
+      if (dex.observed) dexObserved++;
+    } else {
+      X.push([...row.base, ...row.xs]);
+    }
     y.push(scaled > 0 ? 1 : 0);
     fwd.push(fwdRet);
     // The realised forward return is kept so the caller can simulate the
@@ -101,12 +118,33 @@ export function buildUniverseDataset(universe, opts = {}) {
     kept.push({ ts: row.ts, symbol: row.symbol, index: row.index, fwdRet });
   }
 
+  // Coverage decides whether the DEX columns exist at all. A set that is 5%
+  // observed would be 95% neutral padding: the scaler would learn almost
+  // nothing from those columns and every future row would carry a near-constant
+  // the model was trained to ignore. Below the floor the appended columns are
+  // stripped again, so the model file, the walk-forward evaluation and live
+  // scoring can never disagree about the row width — that disagreement is
+  // exactly what broke the 18-feature model once already.
+  const dexCoverage = X.length ? dexObserved / X.length : 0;
+  const dexIncluded = Boolean(dexIndex) && X.length > 0 && dexCoverage >= minDexCoverage;
+  if (dexIndex && !dexIncluded) {
+    for (const r of X) r.length -= DEX_FEATURE_NAMES.length;
+  }
+
   return {
     X,
     y,
     fwd,
     indices: kept,
-    meta: { horizon, rows: X.length, skippedUndecidable, coins: universe.length },
+    meta: {
+      horizon,
+      rows: X.length,
+      skippedUndecidable,
+      coins: universe.length,
+      dexProvided: Boolean(dexIndex),
+      dexIncluded,
+      dexCoverage: Number(dexCoverage.toFixed(4)),
+    },
   };
 }
 

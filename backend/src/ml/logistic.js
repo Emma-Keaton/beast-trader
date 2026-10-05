@@ -121,13 +121,29 @@ export function fit(X, y, opts = {}) {
 }
 
 /**
- * Use the caller's feature names when they match the trained width, otherwise
- * fall back to positional names. A mismatch must never be papered over.
+ * Resolve the feature names stored on the model.
+ *
+ * - **Names claimed by the caller** are honoured only when they match the
+ *   trained width exactly. A model that advertises names it does not have is
+ *   precisely the bug that broke the 18-feature cross-sectional model:
+ *   consumers sized their rows from `model.features.length` and read past the
+ *   end of the vector. A mismatch therefore throws — it must never be papered
+ *   over by substituting a different list after a console.warn nobody reads.
+ * - **No names claimed** (`null`/`undefined`): the canonical base list when
+ *   the width is exactly the base feature set, otherwise positional labels. A
+ *   caller that claims nothing cannot be wrong about the labels — generic
+ *   fits (walk-forward folds, test fixtures) legitimately train unlabeled
+ *   widths through this branch, so it stays permissive by design.
  */
 function namesFor(provided, width) {
-  if (Array.isArray(provided) && provided.length === width) return provided;
-  if (Array.isArray(provided) && provided.length !== width) {
-    console.warn(`[logistic] got ${provided.length} feature names for ${width} weights; using positional names`);
+  if (provided !== null && provided !== undefined) {
+    if (!Array.isArray(provided) || provided.length !== width) {
+      const got = Array.isArray(provided) ? `${provided.length} names` : typeof provided;
+      throw new Error(
+        `fit: got ${got} for a ${width}-feature model; refusing to store names that do not match the trained weights`,
+      );
+    }
+    return provided;
   }
   return FEATURE_NAMES.length === width
     ? FEATURE_NAMES
