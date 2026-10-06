@@ -22,6 +22,10 @@
 --   paper_calls     every prediction with its features and realised outcome
 --   proposals       assisted-mode trades awaiting a wallet signature
 --   model_registry  champion and challengers, so learning survives restarts
+--   dex_snapshots   point-in-time DEX observations for feature lookup
+--   whale_flows     per-wallet DEX flow events
+--   whale_profiles  per-wallet rollups
+--   kronos_calls    Kronos sidecar forecasts joined to realized returns later
 --
 -- SECURITY, LAYER 2: the service-role key.
 --
@@ -371,11 +375,34 @@ create table if not exists whale_profiles (
   updated_at timestamptz default now()
 );
 
+-- Kronos sidecar forecasts. One row per prediction request so realized
+-- outcomes can be joined later for fine-tuning, reranking and calibration.
+create table if not exists kronos_calls (
+  id uuid primary key default gen_random_uuid(),
+  device_id text,
+  symbol text,
+  horizon integer,
+  sample_count integer,
+  model_version text,
+  probability_up numeric,
+  confidence numeric,
+  signal text,
+  entry_price numeric,
+  target_price numeric,
+  raw jsonb,
+  realized_return_pct numeric,   -- filled in by the settlement sweep
+  settled_at timestamptz,
+  created_at timestamptz default now()
+);
+
+create index if not exists kronos_calls_symbol_ts on kronos_calls (symbol, created_at desc);
+
 -- RLS. These are read by the backend's service role like every other table.
 -- Enabled and deliberately not forced — see the note above.
 alter table dex_snapshots enable row level security;
 alter table whale_flows   enable row level security;
 alter table whale_profiles enable row level security;
+alter table kronos_calls  enable row level security;
 
 -- Add the new tables to the verification query at the top of this section.
 --   select c.relname, c.relrowsecurity as rls,
@@ -383,6 +410,6 @@ alter table whale_profiles enable row level security;
 --     from pg_class c
 --    where c.relname in ('watchlist','orders','research_logs','device_settings',
 --                        'paper_calls','proposals','model_registry',
---                        'dex_snapshots','whale_flows','whale_profiles')
+--                        'dex_snapshots','whale_flows','whale_profiles','kronos_calls')
 --    order by 1;
 -- backend is not using the service-role key.

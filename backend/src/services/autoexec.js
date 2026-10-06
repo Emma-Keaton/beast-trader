@@ -23,7 +23,7 @@
 
 import { allMovers } from "./data.js";
 import { marketSnapshot } from "./snapshot.js";
-import { predict } from "./predict.js";
+import { predict, predictBest } from "./predict.js";
 import { research } from "./research.js";
 import { AUTO_CHAINS, chainBreaker, profileFor, screenCandidate, allChainStatus } from "../ml/chains.js";
 import { checkPrerequisites, liveReadiness } from "./gate.js";
@@ -106,7 +106,7 @@ export async function considerCandidate({ deviceId, symbol, chain, settings }) {
   }
 
   const note = await research(snapshot).catch(() => null);
-  const prediction = note?.prediction ?? predict(snapshot);
+  const prediction = note?.prediction ?? (await predictBest(snapshot)) ?? predict(snapshot);
   if (!prediction) return { action: "skipped", reasons: ["no prediction available"] };
 
   const screen = screenCandidate({ chain, snapshot, prediction, profile });

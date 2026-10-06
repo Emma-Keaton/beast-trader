@@ -1,4 +1,4 @@
-import { predict } from "./predict.js";
+import { predict, predictBest } from "./predict.js";
 
 /**
  * Research service — structures a market snapshot into the JSON contract the
@@ -66,7 +66,7 @@ export function formatPrice(n) {
 }
 
 export async function research(snapshot) {
-  const prediction = predict(snapshot);
+  const prediction = (await predictBest(snapshot)) ?? predict(snapshot);
   return composeNote(snapshot, prediction);
 }
 

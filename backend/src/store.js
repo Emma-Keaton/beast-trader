@@ -30,6 +30,7 @@ const COLS = [
   "dex_snapshots",
   "whale_flows",
   "whale_profiles",
+  "kronos_calls",
 ];
 
 function blank() {

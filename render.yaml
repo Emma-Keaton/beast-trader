@@ -22,3 +22,8 @@ services:
       # invalid => warning logged, keyless feed used instead.
       - key: CMC_API_KEY
         sync: false
+      # Kronos Modal sidecar. URL is non-secret, safe to commit.
+      - key: KRONOS_SERVICE_URL
+        sync: false
+      - key: KRONOS_API_KEY
+        sync: false

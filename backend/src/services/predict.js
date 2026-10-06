@@ -33,6 +33,7 @@ import { getModel } from "../ml/registry.js";
 import { predictProbability } from "../ml/logistic.js";
 import { turbulenceIndex } from "../ml/sizing.js";
 import { forecast, toPrediction, STRATEGIC_HORIZON } from "../ml/forecast.js";
+import { predictWithKronos, kronosEnabled } from "../ml/kronos.js";
 
 /** Probability band that becomes HOLD. 0.5 = coin flip. */
 const LONG_AT = 0.56;
@@ -146,6 +147,19 @@ export function predictFromSnapshot(snap) {
 /** Entry point used by the research service: model first, rules as backstop. */
 export function predict(snapshot) {
   return predictFromSeries(snapshot.history, snapshot) || predictFromSnapshot(snapshot);
+}
+
+/**
+ * Async entry point: Kronos sidecar first when KRONOS_SERVICE_URL is set,
+ * with the local model tier and rules as automatic fallbacks. Never throws;
+ * a sidecar outage degrades to the sync predict() path, never to a crash.
+ */
+export async function predictBest(snapshot) {
+  if (kronosEnabled()) {
+    const k = await predictWithKronos(snapshot?.history, snapshot);
+    if (k) return k;
+  }
+  return predict(snapshot);
 }
 
 /**
